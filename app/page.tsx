@@ -165,17 +165,13 @@ export default function ProductMatchFinder() {
   const [carouselIndex, setCarouselIndex] = useState(0)
 
   const handleSearch = () => {
-    console.log("[v0] handleSearch called with query:", query)
     const parsed = parseCriteria(query)
-    console.log("[v0] parsed criteria:", parsed)
     setCriteria(parsed)
     const ranked = rankProducts(parsed, weights)
-    console.log("[v0] ranked products:", ranked.length)
     setResults(ranked)
     setSummary(buildSummary(parsed, ranked))
     setHasSearched(true)
     setCarouselIndex(0)
-    console.log("[v0] results state should be updated")
   }
 
   const updateCriteriaWeight = (criterion: string, weight: number) => {
