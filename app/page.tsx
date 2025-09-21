@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Search,
@@ -14,18 +14,20 @@ import {
   ChevronRight,
   Grid3X3,
   RotateCcw,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
+// import { Progress } from "@/components/ui/progress"
 import { Slider } from "@/components/ui/slider"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 // Types
 import type { Product, ParsedCriteria, ScoredProduct } from "@/lib/types"
+type RankedItem = { product: Product; overall: number; reason: string }
 
 // Mock catalog
 const CATALOG: Product[] = [
@@ -157,21 +159,101 @@ export default function ProductMatchFinder() {
     brand: 0.1,
     cushion: 0.15,
   })
-  const [results, setResults] = useState<ScoredProduct[]>([])
+  const [results, setResults] = useState<RankedItem[]>([])
   const [summary, setSummary] = useState("")
   const [hasSearched, setHasSearched] = useState(false)
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
   const [viewMode, setViewMode] = useState<"grid" | "carousel">("grid")
   const [carouselIndex, setCarouselIndex] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [fallback, setFallback] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [explanation, setExplanation] = useState<{
+    whyTop?: string
+    whatCouldChange?: string[]
+    missingData?: string[]
+  } | null>(null)
 
-  const handleSearch = () => {
-    const parsed = parseCriteria(query)
-    setCriteria(parsed)
-    const ranked = rankProducts(parsed, weights)
-    setResults(ranked)
-    setSummary(buildSummary(parsed, ranked))
+  // Catalog map for rendering details from API ids
+  const [catalog, setCatalog] = useState<Product[] | null>(null)
+  const productMap = useMemo(() => {
+    const map = new Map<string, Product>()
+    ;(catalog || CATALOG).forEach((p) => map.set(p.id, p))
+    return map
+  }, [catalog])
+
+  useEffect(() => {
+    const adapt = (p: any): Product => ({
+      id: p.id,
+      name: p.title ?? p.name ?? "",
+      brand: p.brand,
+      price: p.price,
+      rating: p.rating,
+      ship_days: p.shipDays ?? p.ship_days ?? 0,
+      image: (typeof p.image === "string" && !p.image.startsWith("/images/")) ? p.image : "/placeholder.svg",
+      // best-effort defaults for legacy UI fields
+      weight_oz: p.features?.weight_oz ?? undefined,
+      waterproof: Boolean(p.features?.waterproof ?? p.waterproof ?? false),
+      width: (p.width ?? "regular") as any,
+      cushion: (p.cushion ?? "mid") as any,
+      drop_mm: p.drop_mm ?? 0,
+    })
+    const load = async () => {
+      try {
+        const res = await fetch("/api/catalog", { cache: "no-store" })
+        if (res.ok) {
+          const data = await res.json()
+          const adapted: Product[] = (data.products || []).map(adapt)
+          setCatalog(adapted)
+        }
+      } catch {}
+    }
+    load()
+  }, [])
+
+  const handleSearch = async () => {
+    setLoading(true)
+    setError(null)
+    setFallback(false)
     setHasSearched(true)
     setCarouselIndex(0)
+    try {
+      const res = await fetch("/api/search", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query, weights: {
+          price: weights.price ?? 0.3,
+          shipping: weights.shipping ?? 0.2,
+          features: 0.2,
+          brand: 0.1,
+          rating: 0.2,
+        }, topK: 60 }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        if (data?.fallback && Array.isArray(data.items)) {
+          setFallback(true)
+          setExplanation(null)
+          const mapped = data.items
+            .map((it: any) => ({ product: productMap.get(it.id), overall: 0, reason: "fallback" }))
+            .filter((r: any) => !!r.product)
+          setResults(mapped)
+        } else {
+          setError("Search failed")
+        }
+        return
+      }
+      const ranked: RankedItem[] = data.items
+        .map((it: any) => ({ product: productMap.get(it.id), overall: it.overall, reason: it.reason }))
+        .filter((r: any) => !!r.product)
+      setResults(ranked)
+      setSummary("")
+      setExplanation(data.explanation ?? null)
+    } catch {
+      setError("Network error")
+    } finally {
+      setLoading(false)
+    }
   }
 
   const updateCriteriaWeight = (criterion: string, weight: number) => {
@@ -240,7 +322,7 @@ export default function ProductMatchFinder() {
     return relevantCriteria
   }
 
-  const renderProductCard = (result: ScoredProduct, index: number) => (
+  const renderProductCard = (result: any, index: number) => (
     <motion.div
       key={result.product.id}
       initial={{ opacity: 0, y: 20 }}
@@ -266,10 +348,12 @@ export default function ProductMatchFinder() {
                       <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
                       <span>{result.product.rating}</span>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Package className="w-4 h-4" />
-                      <span>{result.product.weight_oz}oz</span>
-                    </div>
+                    {result.product.weight_oz !== undefined && (
+                      <div className="flex items-center gap-1">
+                        <Package className="w-4 h-4" />
+                        <span>{result.product.weight_oz}oz</span>
+                      </div>
+                    )}
                     <div className="flex items-center gap-1">
                       <Clock className="w-4 h-4" />
                       <span>{result.product.ship_days} days</span>
@@ -277,9 +361,7 @@ export default function ProductMatchFinder() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
-                    {Math.round(result.overallScore * 100)}%
-                  </div>
+                  <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">{Math.round((result as any).overall ? (result as any).overall * 100 : (result as any).overallScore * 100)}%</div>
                   <div className="text-sm text-slate-500 dark:text-slate-400">Match</div>
                 </div>
               </div>
@@ -294,18 +376,9 @@ export default function ProductMatchFinder() {
                 <Badge variant="outline">{result.product.drop_mm}mm drop</Badge>
               </div>
 
-              {/* Criterion scores */}
-              <div className="space-y-2">
-                {result.criterionScores.map((criterion, idx) => (
-                  <div key={idx} className="flex items-center gap-3">
-                    <div className="w-20 text-sm font-medium text-slate-600 dark:text-slate-400">{criterion.name}</div>
-                    <div className="flex-1">
-                      <Progress value={criterion.score * 100} className="h-2" />
-                    </div>
-                    <div className="w-12 text-sm font-medium text-right">{Math.round(criterion.score * 100)}%</div>
-                    <div className="w-48 text-sm text-slate-600 dark:text-slate-400 truncate">{criterion.reason}</div>
-                  </div>
-                ))}
+              {/* Reason from judge */}
+              <div className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                Reason: <span className="italic">{(result as any).reason || "—"}</span>
               </div>
             </div>
 
@@ -327,6 +400,7 @@ export default function ProductMatchFinder() {
                 size="sm"
                 className="mt-4 w-full justify-between"
                 onClick={() => toggleProductExpansion(result.product.id)}
+                aria-expanded={expandedProducts.has(result.product.id)}
               >
                 <span>Why this ranking?</span>
                 {expandedProducts.has(result.product.id) ? (
@@ -338,24 +412,8 @@ export default function ProductMatchFinder() {
             </CollapsibleTrigger>
             <CollapsibleContent className="mt-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
               <div className="space-y-2 text-sm">
-                <p className="font-medium">Weighted Score Calculation:</p>
-                {result.criterionScores.map((criterion, idx) => (
-                  <div key={idx} className="flex justify-between">
-                    <span>
-                      {criterion.name} (weight: {Math.round(criterion.weight * 100)}%)
-                    </span>
-                    <span>
-                      {Math.round(criterion.score * 100)}% × {Math.round(criterion.weight * 100)}% ={" "}
-                      {Math.round(criterion.score * criterion.weight * 100)}%
-                    </span>
-                  </div>
-                ))}
-                <div className="border-t pt-2 font-medium">
-                  <div className="flex justify-between">
-                    <span>Total Score:</span>
-                    <span>{Math.round(result.overallScore * 100)}%</span>
-                  </div>
-                </div>
+                <p className="font-medium">Explanation:</p>
+                <p className="text-slate-600 dark:text-slate-400">{(result as any).reason || "No additional details."}</p>
               </div>
             </CollapsibleContent>
           </Collapsible>
@@ -474,8 +532,15 @@ export default function ProductMatchFinder() {
                   exit={{ opacity: 0, y: -20 }}
                   className="space-y-6"
                 >
+                  {fallback && (
+                    <Card role="status" aria-live="polite">
+                      <CardContent className="p-4 text-sm text-amber-700 bg-amber-50">
+                        Showing unranked fallback
+                      </CardContent>
+                    </Card>
+                  )}
                   {/* Summary */}
-                  {summary && (
+                  {explanation && (
                     <Card>
                       <CardHeader>
                         <CardTitle className="flex items-center gap-2">
@@ -484,7 +549,25 @@ export default function ProductMatchFinder() {
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <p className="text-slate-700 dark:text-slate-300 leading-relaxed">{summary}</p>
+                        {explanation.whyTop && (
+                          <p className="text-slate-700 dark:text-slate-300 leading-relaxed">{explanation.whyTop}</p>
+                        )}
+                        {explanation.whatCouldChange && explanation.whatCouldChange.length > 0 && (
+                          <div className="mt-3">
+                            <div className="font-medium mb-1">What could change the ranking</div>
+                            <ul className="list-disc list-inside text-slate-700 dark:text-slate-300">
+                              {explanation.whatCouldChange.map((w, i) => (
+                                <li key={i}>{w}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {explanation.missingData && explanation.missingData.length > 0 && (
+                          <div className="mt-3 text-sm text-slate-600 dark:text-slate-400">
+                            <div className="font-medium">Data that could change results</div>
+                            <div>{explanation.missingData.join(", ")}</div>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   )}
@@ -495,6 +578,12 @@ export default function ProductMatchFinder() {
                       <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
                         Ranked Results ({results.length} products)
                       </h2>
+                      {loading && (
+                        <div className="flex items-center gap-2 text-sm text-slate-500" role="status" aria-live="polite">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Searching...
+                        </div>
+                      )}
                       {results.length > 0 && (
                         <Select value={viewMode} onValueChange={(value: "grid" | "carousel") => setViewMode(value)}>
                           <SelectTrigger className="w-40">

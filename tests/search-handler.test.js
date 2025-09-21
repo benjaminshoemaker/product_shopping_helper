@@ -52,3 +52,10 @@ test('timeout returns 504 with fallback ordering', async () => {
     }
   }
 })
+
+test('explanation passes through when provided by judge', async () => {
+  const res = await handleSearch({ body: { query: 'waterproof', topK: 6 }, headers: { 'x-test-mode': 'explain' } })
+  assert.equal(res.status, 200)
+  assert.ok(res.body.explanation)
+  assert.ok(typeof res.body.explanation.whyTop === 'string')
+})

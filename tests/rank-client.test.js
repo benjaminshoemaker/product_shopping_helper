@@ -17,6 +17,11 @@ test('schema: accepts valid payload', () => {
       { id: 'a', overall: 0.82, reason: 'Good price; not waterproof' },
       { id: 'b', overall: 0.91, reason: 'Waterproof; slightly higher price' },
     ],
+    explanation: {
+      whyTop: 'Short block explaining ordering by price and rating.',
+      whatCouldChange: ['If shipping mattered more...'],
+      missingData: ['battery_life_hours'],
+    },
   }
   assert.doesNotThrow(() => OutputSchema.parse(payload))
 })
@@ -28,6 +33,15 @@ test('schema: rejects invalid payload', () => {
     items: [{ id: 'a', overall: 2, reason: '' }], // invalid overall, empty reason
   }
   assert.throws(() => OutputSchema.parse(bad))
+})
+
+test('schema: explanation is optional (absent still validates)', () => {
+  const payload = {
+    constraints: { query: 'q' },
+    weights,
+    items: [{ id: 'a', overall: 0.5, reason: 'ok' }],
+  }
+  assert.doesNotThrow(() => OutputSchema.parse(payload))
 })
 
 test('parseOutput: detects non-JSON', () => {
