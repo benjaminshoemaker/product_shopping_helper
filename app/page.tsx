@@ -169,9 +169,9 @@ export default function ProductMatchFinder() {
   const [fallback, setFallback] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [explanation, setExplanation] = useState<{
-    whyTop?: string
-    whatCouldChange?: string[]
-    missingData?: string[]
+    overview: string
+    perItem?: { id: string; label: 'Best deal' | 'Also good' | 'Fastest arrival' | 'Highest rated' | 'Lowest price'; oneLiner: string }[]
+    caveats?: string[]
   } | null>(null)
 
   // Catalog map for rendering details from API ids
@@ -549,24 +549,23 @@ export default function ProductMatchFinder() {
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
-                        {explanation.whyTop && (
-                          <p className="text-slate-700 dark:text-slate-300 leading-relaxed">{explanation.whyTop}</p>
-                        )}
-                        {explanation.whatCouldChange && explanation.whatCouldChange.length > 0 && (
-                          <div className="mt-3">
-                            <div className="font-medium mb-1">What could change the ranking</div>
-                            <ul className="list-disc list-inside text-slate-700 dark:text-slate-300">
-                              {explanation.whatCouldChange.map((w, i) => (
-                                <li key={i}>{w}</li>
-                              ))}
-                            </ul>
+                        <p className="text-slate-700 dark:text-slate-300 leading-relaxed">{explanation.overview}</p>
+                        {explanation.perItem && explanation.perItem.length > 0 && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {explanation.perItem.map((pi, i) => (
+                              <div key={pi.id} className="border rounded-md px-3 py-2 text-sm bg-white dark:bg-slate-900">
+                                <div className="font-medium">{pi.label}</div>
+                                <div className="text-slate-600 dark:text-slate-400">{pi.oneLiner}</div>
+                              </div>
+                            ))}
                           </div>
                         )}
-                        {explanation.missingData && explanation.missingData.length > 0 && (
-                          <div className="mt-3 text-sm text-slate-600 dark:text-slate-400">
-                            <div className="font-medium">Data that could change results</div>
-                            <div>{explanation.missingData.join(", ")}</div>
-                          </div>
+                        {explanation.caveats && explanation.caveats.length > 0 && (
+                          <ul className="mt-3 list-disc list-inside text-sm text-slate-600 dark:text-slate-400">
+                            {explanation.caveats.map((c, i) => (
+                              <li key={i}>{c}</li>
+                            ))}
+                          </ul>
                         )}
                       </CardContent>
                     </Card>

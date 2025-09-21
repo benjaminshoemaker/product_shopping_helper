@@ -42,9 +42,12 @@ describe('Summary rendering', () => {
         { id: 'a', overall: 0.8, reason: 'Under budget' },
       ],
       explanation: {
-        whyTop: 'Top results balance price and rating.',
-        whatCouldChange: ['If shipping mattered more, A improves.'],
-        missingData: ['weight_oz'],
+        overview: 'Your top result is the best deal with fast arrival.',
+        perItem: [
+          { id: 'b', label: 'Best deal', oneLiner: '$150 • 5 days • 4.7 rating' },
+          { id: 'a', label: 'Also good', oneLiner: '$120 • 3 days • 4.5 rating' },
+        ],
+        caveats: ['One pick ships slower.'],
       },
     }
     global.fetch = mockFetch({ status: 200, body }) as any
@@ -56,9 +59,11 @@ describe('Summary rendering', () => {
     fireEvent.click(button)
 
     await screen.findByText(/Summary/i)
-    await screen.findByText(/Top results balance price and rating/i)
-    await screen.findByText(/If shipping mattered more/i)
-    await screen.findByText(/Data that could change results/i)
+    await screen.findByText(/best deal with fast arrival/i)
+    const allBest = await screen.findAllByText(/Best deal/i)
+    expect(allBest.length).toBeGreaterThan(0)
+    await screen.findByText(/Also good/i)
+    await screen.findByText(/One pick ships slower/i)
   })
 
   test('hides Summary when no explanation', async () => {
@@ -82,4 +87,3 @@ describe('Summary rendering', () => {
     expect(screen.queryByText(/Summary/i)).toBeNull()
   })
 })
-

@@ -18,9 +18,12 @@ test('schema: accepts valid payload', () => {
       { id: 'b', overall: 0.91, reason: 'Waterproof; slightly higher price' },
     ],
     explanation: {
-      whyTop: 'Short block explaining ordering by price and rating.',
-      whatCouldChange: ['If shipping mattered more...'],
-      missingData: ['battery_life_hours'],
+      overview: 'Your top result is the best deal. The next two are close.',
+      perItem: [
+        { id: 'b', label: 'Best deal', oneLiner: '$150 • 5 days • 4.7 rating' },
+        { id: 'a', label: 'Also good', oneLiner: '$120 • 3 days • 4.5 rating' },
+      ],
+      caveats: ['Two items exceed your cap.'],
     },
   }
   assert.doesNotThrow(() => OutputSchema.parse(payload))
